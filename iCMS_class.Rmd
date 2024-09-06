@@ -1,0 +1,74 @@
+---
+title: "iCMS_classifier"
+output: html_document
+date: "2023-10-20"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Markers
+```{r}
+icmsmarkers = read.delim("~/Desktop/CRC/Selma/iCMS Markers.csv", sep = ',', header = T, stringsAsFactors = F)
+features <- unique(icmsmarkers$markers)
+```
+
+Markers
+```{r}
+icmsmarkers = i2_i3
+by_status = split(icmsmarkers,icmsmarkers$status)
+features = lapply(by_status, function(x){x[,1]})
+```
+Data
+```{r}
+dat <- LayerData(object, assay = "RNA", layer = "data")
+```
+
+Load seurat object
+```{r}
+object = readRDS("~/Desktop/CRC/Selma/UCAN_Seurat_obj2.rds")
+```
+
+Function
+modified version
+```{r}
+iCMSclass <- function(
+  object,
+  features = features,
+  c.cutoff = NULL
+) {
+  # Define the GetModuleCounts function
+  GetModuleCounts <- function(f, dat) {
+    # gets normalized counts for features
+    Cnts <- dat[which(rownames(dat) %in% f), ]
+    # sums counts per cell
+    CntsSum <- colSums(Cnts)
+    NormCntsSum.Z <- scale(CntsSum, center = TRUE)
+    return(NormCntsSum.Z)
+  }
+
+  # Apply GetModuleCounts to features
+  Scores <- lapply(features, FUN = GetModuleCounts, dat = dat)
+  score.mat.norm <- t(do.call(cbind, Scores))
+  rownames(score.mat.norm) <- names(features)
+
+  L <- list('iCMS2' = c(1, 0), 'iCMS3' = c(0, 1))
+  
+  icms2 <- apply(score.mat.norm, 2, FUN = function(x) {cor(x, L[['iCMS2']])})
+  icms3 <- apply(score.mat.norm, 2, FUN = function(x) {cor(x, L[['iCMS3']])})
+  
+  cor.mat <- cbind(icms2, icms3)
+  whichmax <- apply(cor.mat, 1, which.max)
+  icms <- colnames(cor.mat)[whichmax]
+  names(icms) <- names(whichmax)
+  
+  if (!is.null(c.cutoff)) {
+    icms[which(rowMax(cor.mat) < c.cutoff)] <- 'Undefined'
+  }
+  return(list("iCMS.call" = icms, "scores" = t(score.mat.norm)))
+}
+```
+
+  
+ 
